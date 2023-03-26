@@ -1,12 +1,8 @@
-require('dotenv').config();
-require('./config');
-
-// Autentique sua aplicação com as credenciais de API do Google Docs
-// Obtenha as credenciais no console do desenvolvedor do Google Cloud
-// e insira-as como variáveis ​​de ambiente em seu ambiente de desenvolvimento
-
-// Crie uma instância do cliente da API do Google Docs
+const express = require('express');
 const { google } = require('googleapis');
+require('dotenv').config();
+
+const app = express();
 
 const authClient = new google.auth.JWT({
   email: process.env.GOOGLE_CLIENT_EMAIL,
@@ -14,58 +10,107 @@ const authClient = new google.auth.JWT({
   scopes: ['https://www.googleapis.com/auth/documents'],
 });
 
-// Autorize o objeto authClient para obter um token de acesso
-authClient.authorize((err, tokens) => {
-  if (err) {
-    console.log(`Ocorreu um erro: ${err}`);
-    return;
-  }
-  
+app.get('/document/:id', (req, res) => {
   const docs = google.docs({
-    version: 'v1', 
+    version: 'v1',
     auth: authClient,
   });
-  
-  // Use o método 'documents.get' para acessar um documento existente
-  docs.documents.get({
-    documentId: '1p2GlhdxW6nmrihpyxWj0XCwgM1d4RVpBCr8rL_adEss', // Insira o ID do documento aqui
-  }, (err, res) => {
-    if (err) {
-      console.log(`Ocorreu um erro: ${err}`);
-      return;
-    }
-    console.log(`O conteúdo do documento é: ${res.data.body.content}`);
-  });
 
-  // Use o método 'documents.create' para criar um novo documento
-  docs.documents.create({
-    title: 'Meu novo documento', // Insira o título do documento aqui
-  }, (err, res) => {
-    if (err) {
-      console.log(`Ocorreu um erro: ${err}`);
-      return;
-    }
-    console.log(`O ID do novo documento é: ${res.data.documentId}`);
-  });
-
-  // Use o método 'documents.batchUpdate' para atualizar o conteúdo de um documento existente
-  docs.documents.batchUpdate({
-    documentId: '1p2GlhdxW6nmrihpyxWj0XCwgM1d4RVpBCr8rL_adEss', // Insira o ID do documento aqui
-    resource: {
-      requests: [
-        {
-          insertText: {
-            text: 'Este é um novo parágrafo.',
-            endOfSegmentLocation: {},
-          },
-        },
-      ],
+  docs.documents.get(
+    {
+      documentId: req.params.id,
     },
-  }, (err, res) => {
-    if (err) {
-      console.log(`Ocorreu um erro: ${err}`);
-      return;
+    (err, result) => {
+      if (err) {
+        console.log(`Ocorreu um erro: ${err}`);
+        res.status(500).send(err);
+        return;
+      }
+      res.send(result.data);
     }
-    console.log(`O conteúdo do documento foi atualizado.`);
+  );
+});
+
+app.get('/documents/:documentId/history', async (req, res) => {
+  const { documentId } = req.params;
+
+  try {
+    const authClient = new google.auth.JWT({
+      email: process.env.GOOGLE_CLIENT_EMAIL,
+      key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/gm, '\n'),
+      scopes: ['https://www.googleapis.com/auth/documents'],
+    });
+
+    const docs = google.docs({
+      version: 'v1',
+      auth: authClient,
+    });
+
+    const response = await docs.documents.get({
+      documentId,
+      fields: 'documentId,revisions',
+    });
+
+    const { revisions } = response.data;
+    res.send(revisions);
+  } catch (err) {
+    console.log(`Ocorreu um erro: ${err}`);
+    res.status(500).send({ error: 'Não foi possível obter o histórico do documento.' });
+  }
+});
+
+app.post('/document', (req, res) => {
+  const docs = google.docs({
+    version: 'v1',
+    auth: authClient,
   });
+
+  docs.documents.create(
+    {
+      title: req.body.title,
+    },
+    (err, result) => {
+      if (err) {
+        console.log(`Ocorreu um erro: ${err}`);
+        res.status(500).send(err);
+        return;
+      }
+      res.send(result.data);
+    }
+  );
+});
+
+app.put('/document/:id', (req, res) => {
+  const docs = google.docs({
+    version: 'v1',
+    auth: authClient,
+  });
+
+  docs.documents.batchUpdate(
+    {
+      documentId: req.params.id,
+      resource: {
+        requests: [
+          {
+            insertText: {
+              text: req.body.text,
+              endOfSegmentLocation: {},
+            },
+          },
+        ],
+      },
+    },
+    (err, result) => {
+      if (err) {
+        console.log(`Ocorreu um erro: ${err}`);
+        res.status(500).send(err);
+        return;
+      }
+      res.send(result.data);
+    }
+  );
+});
+
+app.listen(3000, () => {
+  console.log('API rodando na porta 3000');
 });
