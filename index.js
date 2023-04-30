@@ -1,5 +1,7 @@
 const express = require('express');
 const { google } = require('googleapis');
+const language = require('@google-cloud/language');
+
 require('dotenv').config();
 
 const app = express();
@@ -10,29 +12,43 @@ const authClient = new google.auth.JWT({
   scopes: ['https://www.googleapis.com/auth/documents'],
 });
 
-app.get('/document/:id', (req, res) => {
-  const docs = google.docs({
-    version: 'v1',
-    auth: authClient,
-  });
+const languageClient = new language.LanguageServiceClient({
+  credentials: {
+    client_email: process.env.GOOGLE_LANGUAGE_EMAIL,
+    private_key: process.env.GOOGLE_LANGUAGE_KEY.replace(/\\n/gm, '\n'),
+  },
+});
 
-  docs.documents.get(
-    {
+app.get('/document/:id', async (req, res) => {
+  try {
+    const docs = google.docs({
+      version: 'v1',
+      auth: authClient,
+    });
+
+    const result = await docs.documents.get({
       documentId: req.params.id,
-    },
-    (err, result) => {
-      if (err) {
-        console.log(`Ocorreu um erro: ${err}`);
-        res.status(500).send(err);
-        return;
-      }
-      
-      const document = result.data;
-      const content = (document.body.content ?? []).map((c) => (c.paragraph?.elements ?? []).map((e) => e.textRun?.content ?? '').join('')).join('');
+    });
 
-      res.send(content);
-    }
-  );
+    const document = result.data;
+    const content = (document.body.content ?? []).map((c) => (c.paragraph?.elements ?? []).map((e) => e.textRun?.content ?? '').join('')).join('');
+
+    const [analysisResult] = await languageClient.analyzeSentiment({
+      document: {
+        content,
+        type: 'PLAIN_TEXT',
+        language: 'pt',
+      },
+      encodingType: 'UTF8',
+      enableEntitySentiment: true,
+      enableEmotion: true
+    });
+
+    res.send(analysisResult);
+  } catch (err) {
+    console.log(`Ocorreu um erro: ${err}`);
+    res.status(500).send(err);
+  }
 });
 
 app.listen(3000, () => {
