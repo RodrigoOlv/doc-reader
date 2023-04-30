@@ -33,16 +33,28 @@ app.get('/document/:id', async (req, res) => {
     const document = result.data;
     const content = (document.body.content ?? []).map((c) => (c.paragraph?.elements ?? []).map((e) => e.textRun?.content ?? '').join('')).join('');
 
-    const [analysisResult] = await languageClient.analyzeSentiment({
+    const [analysisResult] = await languageClient.annotateText({
       document: {
-        content,
+        content: content,
         type: 'PLAIN_TEXT',
-        language: 'pt',
+      },
+      features: {
+        extractEntities: true,
+        extractDocumentSentiment: true,
       },
       encodingType: 'UTF8',
-      enableEntitySentiment: true,
-      enableEmotion: true
     });
+    
+    // const [analysisResult] = await languageClient.analyzeSentiment({
+    //   document: {
+    //     content,
+    //     type: 'PLAIN_TEXT',
+    //     language: 'pt',
+    //   },
+    //   encodingType: 'UTF8',
+    //   enableEntitySentiment: true,
+    //   enableEmotion: true
+    // });
 
     res.send(analysisResult);
   } catch (err) {
