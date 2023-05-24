@@ -51,7 +51,37 @@ app.get('/document/:id/', async (req, res) => {
       enableEmotion: true
     });
 
-    res.send(analysisResult);
+    const sentiment = analysisResult[0].documentSentiment;
+    const magnitude = sentiment.magnitude;
+    const score = sentiment.score;
+
+    let resultado = "";
+
+    if (score > 0.25) {
+      if (magnitude > 0.5) {
+        resultado = "Claramente positivo";
+      } else {
+        resultado = "Moderadamente positivo";
+      }
+    } else if (score < -0.25) {
+      if (magnitude > 0.5) {
+        resultado = "Claramente negativo";
+      } else {
+        resultado = "Moderadamente negativo";
+      }
+    } else {
+      resultado = "Neutro";
+    }
+
+    console.log('Resultado:', resultado);
+
+    // Inclui o resultado no objeto de resposta
+    const responseObj = {
+      analysisResult,
+      resultado
+    };
+
+    res.send(responseObj);
 
   } catch (err) {
     console.log(`Ocorreu um erro: ${err}`);
