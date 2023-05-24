@@ -1,9 +1,7 @@
 const express = require('express');
-const axios = require('axios');
 
 const { google } = require('googleapis');
 const language = require('@google-cloud/language');
-const natural = require('natural');
 
 require('dotenv').config();
 
