@@ -1,27 +1,41 @@
 const express = require('express');
-
 const { google } = require('googleapis');
-const language = require('@google-cloud/language');
+const axios = require('axios');
 
 require('dotenv').config();
 
 const app = express();
 
-// token de autenticação do google docs
+// Configuração do cliente de autenticação do Google Docs
 const authClient = new google.auth.JWT({
   email: process.env.GOOGLE_CLIENT_EMAIL,
   key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/gm, '\n'),
   scopes: ['https://www.googleapis.com/auth/documents'],
 });
 
-// token de autenticação do google language
-const languageClient = new language.LanguageServiceClient({
-  credentials: {
-    client_email: process.env.GOOGLE_LANGUAGE_EMAIL,
-    private_key: process.env.GOOGLE_LANGUAGE_KEY.replace(/\\n/gm, '\n'),
-  },
-});
+async function sendMessageToChatGPT(message) {
+  try {
+    const apiUrl = 'https://api.openai.com/v1/completions';
+    const apiKey = process.env.OPENAI_API_KEY;
 
+    const response = await axios.post(apiUrl, {
+      model: 'text-davinci-003',
+      prompt: `Faça um resumo deste texto: ${message}`,
+      temperature: 0.5,
+      max_tokens: 40000,
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+    });
+
+    return response.data.choices[0].text;
+  } catch (error) {
+    console.log('Erro ao enviar a mensagem para o ChatGPT:', error);
+    throw error;
+  }
+}
 
 app.get('/document/:id/', async (req, res) => {
   try {
@@ -30,59 +44,24 @@ app.get('/document/:id/', async (req, res) => {
       auth: authClient,
     });
 
-    // passa o id do documento para o método da biblioteca
+    // Passa o ID do documento para o método da biblioteca
     const result = await docs.documents.get({
       documentId: req.params.id,
     });
 
-    // trata o retorno do googleapi para isolar o conteúdo do texto
+    // Trata o retorno do Google API para isolar o conteúdo do texto
     const document = result.data;
     const content = (document.body.content ?? []).map((c) => (c.paragraph?.elements ?? []).map((e) => e.textRun?.content ?? '').join('')).join('');
 
-    // passa o conteúdo do texto para o método de análise de sentimento do google language
-    const analysisResult = await languageClient.analyzeSentiment({
-      document: {
-        content,
-        type: 'PLAIN_TEXT',
-        language: 'pt',
-      },
-      encodingType: 'UTF8',
-      enableEntitySentiment: true,
-      enableEmotion: true
-    });
-
-    const sentiment = analysisResult[0].documentSentiment;
-    const magnitude = sentiment.magnitude;
-    const score = sentiment.score;
-
-    let resultado = "";
-
-    if (score > 0.25) {
-      if (magnitude > 0.5) {
-        resultado = "Claramente positivo";
-      } else {
-        resultado = "Moderadamente positivo";
-      }
-    } else if (score < -0.25) {
-      if (magnitude > 0.5) {
-        resultado = "Claramente negativo";
-      } else {
-        resultado = "Moderadamente negativo";
-      }
-    } else {
-      resultado = "Neutro";
-    }
-
-    console.log('Resultado:', resultado);
+    // Envia o conteúdo para o ChatGPT usando a API do OpenAI
+    const reply = await sendMessageToChatGPT(content);
 
     // Inclui o resultado no objeto de resposta
     const responseObj = {
-      analysisResult,
-      resultado
+      generatedText: reply,
     };
 
     res.send(responseObj);
-
   } catch (err) {
     console.log(`Ocorreu um erro: ${err}`);
     res.status(500).send(err);
